@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --natural-bg: #F8F7F4;
+  --natural-sidebar: #EEEBE6;
+  --natural-accent: #5A634B;
+  --natural-accent-light: #8E9680;
+  --natural-ink: #2C2C2B;
+  --natural-ink-muted: #706D67;
+  --natural-border: #DCD9D1;
+}
+
+.dark {
+  --natural-bg: #141413;
+  --natural-sidebar: #1C1C1B;
+  --natural-accent: #8E9680;
+  --natural-accent-light: #5A634B;
+  --natural-ink: #EEEBE6;
+  --natural-ink-muted: #94918B;
+  --natural-border: #2C2C2B;
+}
+
+@theme {
+  --color-natural-bg: var(--natural-bg);
+  --color-natural-sidebar: var(--natural-sidebar);
+  --color-natural-accent: var(--natural-accent);
+  --color-natural-accent-light: var(--natural-accent-light);
+  --color-natural-ink: var(--natural-ink);
+  --color-natural-ink-muted: var(--natural-ink-muted);
+  --color-natural-border: var(--natural-border);
+  
+  --font-serif: "Georgia", serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-natural-bg text-natural-ink font-sans antialiased transition-colors duration-200;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-natural-border rounded-full hover:bg-natural-ink-muted/30 transition-colors;
+  }
+}
+
+html, body, #root {
+  height: 100%;
+}
