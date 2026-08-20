@@ -1,220 +1,388 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useEffect, useCallback } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Editor } from './components/Editor';
-import { ResultView } from './components/ResultView';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, Inbox, Loader2, RefreshCw } from 'lucide-react';
 import { Header } from './components/Header';
-import { useLocalStorage } from './hooks/useLocalStorage';
-import { RequestRecord, AppSettings, TransformationParams } from './types';
-import { DEFAULT_PARAMS } from './constants';
-import { transformText } from './services/gemini';
-import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X } from 'lucide-react';
+import { NewsCard, NewsCardSkeleton } from './components/NewsCard';
+import { NewsDetail } from './components/NewsDetail';
+import { ToneControl } from './components/ToneControl';
+import { NewsApiError, fetchArticle, fetchNews, rewriteArticle } from './services/newsApi';
+import type { NewsArticle, NewsSource, RewriteResult, Tone } from './types';
+
+const NEWS_LIMIT = 20;
+const FALLBACK_SOURCE: NewsSource = {
+  id: 'habr-ai',
+  name: 'Хабр',
+  feedUrl: 'https://habr.com/ru/rss/hubs/artificial_intelligence/news/?fl=ru',
+  newsUrl: 'https://habr.com/ru/hubs/artificial_intelligence/news/',
+};
+
+function readStoredTheme(): 'light' | 'dark' {
+  try {
+    return window.localStorage.getItem('gen-meaning-theme') === 'dark'
+      ? 'dark'
+      : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof NewsApiError) {
+    if (error.code === 'LLM_NOT_CONFIGURED') {
+      return 'Сервис переписывания еще не настроен на сервере.';
+    }
+    if (error.code === 'REWRITE_FACT_CHECK_FAILED') {
+      return 'Результат не прошел проверку сохранения фактов.';
+    }
+    if (error.code === 'REWRITE_RATE_LIMITED') {
+      return 'Слишком много запросов. Повторите немного позже.';
+    }
+    return error.message;
+  }
+
+  return error instanceof Error
+    ? error.message
+    : 'Произошла непредвиденная ошибка.';
+}
 
 export default function App() {
-  // Persistence
-  const [records, setRecords] = useLocalStorage<RequestRecord[]>('requests_history', []);
-  const [settings, setSettings] = useLocalStorage<AppSettings>('app_settings', {
-    theme: 'light',
-    apiKey: '',
-  });
-
-  // Local State
-  const [currentId, setCurrentId] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(readStoredTheme);
+  const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [total, setTotal] = useState(0);
+  const [source, setSource] = useState<NewsSource>(FALLBACK_SOURCE);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Initialize first record if empty
+  const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [tone, setTone] = useState<Tone>('neutral');
+  const [customStyle, setCustomStyle] = useState('');
+  const [rewrite, setRewrite] = useState<RewriteResult | null>(null);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+
+  const detailAbortRef = useRef<AbortController | null>(null);
+  const rewriteAbortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
-    if (records.length === 0) {
-      const initialRecord: RequestRecord = {
-        id: crypto.randomUUID(),
-        title: 'Первый запрос',
-        sourceText: '',
-        params: DEFAULT_PARAMS,
-        result: null,
-        createdAt: Date.now(),
-      };
-      setRecords([initialRecord]);
-      setCurrentId(initialRecord.id);
-    } else if (!currentId) {
-      setCurrentId(records[0].id);
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    try {
+      window.localStorage.setItem('gen-meaning-theme', theme);
+    } catch {
+      // Theme persistence is optional.
     }
-  }, [records, currentId, setRecords]);
+  }, [theme]);
 
-  // Derived state
-  const currentRecord = records.find((r) => r.id === currentId) || null;
-
-  // Theme Sync
-  useEffect(() => {
-    if (settings.theme === 'dark') {
-      document.documentElement.classList.add('dark');
+  const loadNews = useCallback(async (append = false) => {
+    if (append) {
+      setIsLoadingMore(true);
+    } else if (articles.length > 0) {
+      setIsRefreshing(true);
     } else {
-      document.documentElement.classList.remove('dark');
+      setIsLoading(true);
     }
-  }, [settings.theme]);
 
-  // Actions
-  const handleNewRecord = useCallback(() => {
-    const newRecord: RequestRecord = {
-      id: crypto.randomUUID(),
-      title: 'Новый запрос',
-      sourceText: '',
-      params: DEFAULT_PARAMS,
-      result: null,
-      createdAt: Date.now(),
-    };
-    setRecords([newRecord, ...records]);
-    setCurrentId(newRecord.id);
-    setIsSidebarOpen(false);
-  }, [records, setRecords]);
-
-  const handleDeleteRecord = useCallback((id: string) => {
-    const updated = records.filter((r) => r.id !== id);
-    setRecords(updated);
-    if (currentId === id) {
-      setCurrentId(updated.length > 0 ? updated[0].id : null);
-    }
-  }, [records, currentId, setRecords]);
-
-  const handleUpdateRecord = useCallback((updates: Partial<RequestRecord>) => {
-    if (!currentId) return;
-    setRecords((prev) =>
-      prev.map((r) => (r.id === currentId ? { ...r, ...updates } : r))
-    );
-  }, [currentId, setRecords]);
-
-  const handleRename = useCallback((id: string, newTitle: string) => {
-    setRecords((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, title: newTitle || 'Без названия' } : r))
-    );
-  }, [setRecords]);
-
-  const handleTransform = async () => {
-    if (!currentRecord || !currentRecord.sourceText.trim()) return;
-    
-    setIsProcessing(true);
-    setError(null);
+    if (!append) setError(null);
 
     try {
-      const apiKey = settings.apiKey || process.env.GEMINI_API_KEY || '';
-      const result = await transformText(
-        currentRecord.sourceText,
-        currentRecord.params,
-        apiKey
+      const response = await fetchNews(
+        NEWS_LIMIT,
+        append ? articles.length : 0,
       );
-      
-      handleUpdateRecord({ 
-        result,
-        title: currentRecord.sourceText.slice(0, 30).trim() || 'Результат'
-      });
-    } catch (err: any) {
-      setError(err.message || 'Произошла непредвиденная ошибка');
+
+      setArticles((current) =>
+        append ? [...current, ...response.items] : response.items,
+      );
+      setTotal(response.pagination.total);
+      setSource(response.source);
+      setLastUpdated(new Date());
+      if (!append) setError(null);
+    } catch (loadError) {
+      setError(getErrorMessage(loadError));
     } finally {
-      setIsProcessing(false);
+      setIsLoading(false);
+      setIsRefreshing(false);
+      setIsLoadingMore(false);
     }
-  };
+  }, [articles.length]);
+
+  useEffect(() => {
+    void loadNews();
+    return () => {
+      detailAbortRef.current?.abort();
+      rewriteAbortRef.current?.abort();
+    };
+  }, []); // Initial fetch only.
+
+  const handleOpenArticle = useCallback((article: NewsArticle) => {
+    detailAbortRef.current?.abort();
+    rewriteAbortRef.current?.abort();
+
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
+    setSelectedArticle(article);
+    setIsDetailLoading(true);
+    setDetailError(null);
+    setRewrite(null);
+    setRewriteError(null);
+    setCustomStyle('');
+
+    void fetchArticle(article.id, controller.signal)
+      .then((freshArticle) => {
+        setSelectedArticle(freshArticle);
+        setArticles((current) =>
+          current.map((item) => (item.id === freshArticle.id ? freshArticle : item)),
+        );
+      })
+      .catch((loadError) => {
+        if (loadError instanceof DOMException && loadError.name === 'AbortError') {
+          return;
+        }
+        setDetailError(getErrorMessage(loadError));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsDetailLoading(false);
+      });
+  }, []);
+
+  const handleCloseArticle = useCallback(() => {
+    detailAbortRef.current?.abort();
+    rewriteAbortRef.current?.abort();
+    setSelectedArticle(null);
+    setIsDetailLoading(false);
+    setIsRewriting(false);
+  }, []);
+
+  const handleToneChange = useCallback((nextTone: Tone) => {
+    setTone(nextTone);
+    setRewrite(null);
+    setRewriteError(null);
+  }, []);
+
+  const handleRewrite = useCallback(async () => {
+    if (!selectedArticle || (tone === 'custom' && !customStyle.trim())) return;
+
+    rewriteAbortRef.current?.abort();
+    const controller = new AbortController();
+    rewriteAbortRef.current = controller;
+    setIsRewriting(true);
+    setRewriteError(null);
+    setRewrite(null);
+
+    try {
+      const result = await rewriteArticle(
+        selectedArticle.id,
+        tone,
+        tone === 'custom' ? customStyle.trim() : null,
+        controller.signal,
+      );
+      setRewrite(result);
+    } catch (rewriteRequestError) {
+      if (
+        rewriteRequestError instanceof DOMException &&
+        rewriteRequestError.name === 'AbortError'
+      ) {
+        return;
+      }
+      setRewriteError(getErrorMessage(rewriteRequestError));
+    } finally {
+      if (!controller.signal.aborted) setIsRewriting(false);
+    }
+  }, [customStyle, selectedArticle, tone]);
+
+  const hasStaleData = Boolean(error && articles.length > 0);
+  const hasMore = articles.length < total;
 
   return (
-    <div className="flex flex-col h-screen bg-natural-bg text-natural-ink font-sans transition-colors duration-200">
-      <Header 
-        settings={settings} 
-        onUpdateSettings={(updates) => setSettings({ ...settings, ...updates })} 
+    <div className="flex min-h-screen flex-col bg-natural-bg text-natural-ink">
+      <Header
+        sourceName={source.name}
+        sourceUrl={source.newsUrl}
+        isRefreshing={isRefreshing}
+        lastUpdated={lastUpdated}
+        theme={theme}
+        onRefresh={() => void loadNews()}
+        onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
       />
 
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Mobile Sidebar Toggle */}
-        <button 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="lg:hidden fixed bottom-6 right-6 z-50 p-4 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-full shadow-2xl"
-        >
-          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-
-        {/* Sidebar Overlay */}
-        <AnimatePresence>
-          {isSidebarOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-black/50 lg:hidden z-40 transition-opacity"
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Sidebar */}
-        <div className={`
-          fixed lg:relative inset-y-0 left-0 w-80 z-40 lg:z-auto transition-transform duration-300 ease-in-out
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}>
-          <Sidebar
-            records={records}
-            currentId={currentId}
-            onSelect={(id) => {
-              setCurrentId(id);
-              setIsSidebarOpen(false);
-              setError(null);
-            }}
-            onDelete={handleDeleteRecord}
-            onNew={handleNewRecord}
-            onRename={handleRename}
-          />
-        </div>
-
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar bg-natural-bg">
-          <div className="max-w-4xl mx-auto p-6 md:p-10">
-            {currentRecord ? (
-              <motion.div
-                key={currentRecord.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-8"
-              >
-                <section>
-                  <Editor
-                    sourceText={currentRecord.sourceText}
-                    params={currentRecord.params}
-                    onChange={(updates) => {
-                      if (updates.sourceText !== undefined) handleUpdateRecord({ sourceText: updates.sourceText });
-                      if (updates.params !== undefined) handleUpdateRecord({ params: { ...currentRecord.params, ...updates.params } });
-                    }}
-                    onTransform={handleTransform}
-                    isProcessing={isProcessing}
-                    error={error}
-                  />
-                </section>
-
-                <AnimatePresence>
-                  {currentRecord.result && (
-                    <motion.section
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                    >
-                      <ResultView result={currentRecord.result} />
-                    </motion.section>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-zinc-400 space-y-4 py-20">
-                <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-900 rounded-2xl flex items-center justify-center">
-                  <X size={32} />
-                </div>
-                <p className="text-sm font-medium">Выберите или создайте запрос</p>
+      <main className="flex-1">
+        <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-9 lg:px-8">
+          <section className="border-b border-natural-border pb-6">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="eyebrow">Лента Хабра</p>
+                <h2 className="mt-2 font-serif text-3xl font-bold tracking-tight text-natural-ink sm:text-4xl">
+                  Свежие материалы
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-natural-ink-muted">
+                  Короткие AI-новости на русском языке с сохраненной ссылкой на первоисточник.
+                </p>
               </div>
-            )}
-          </div>
-        </main>
-      </div>
+              <div className="flex flex-col items-start gap-2 lg:items-end">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-natural-ink-muted">
+                  Тональность
+                </span>
+                <ToneControl value={tone} onChange={handleToneChange} compact />
+              </div>
+            </div>
+          </section>
+
+          {hasStaleData && (
+            <div className="mt-5 flex flex-col gap-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+              <span className="inline-flex items-start gap-2">
+                <AlertCircle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                Не удалось обновить ленту. Показаны последние сохраненные новости.
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadNews()}
+                className="inline-flex items-center gap-1.5 self-start font-semibold hover:underline sm:self-auto"
+              >
+                <RefreshCw size={14} aria-hidden="true" />
+                Повторить
+              </button>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="news-grid mt-7" aria-label="Загрузка новостей">
+              {Array.from({ length: 6 }, (_, index) => (
+                <NewsCardSkeleton key={index} />
+              ))}
+            </div>
+          ) : error && articles.length === 0 ? (
+            <EmptyState
+              icon={<AlertCircle size={24} aria-hidden="true" />}
+              title="Лента временно недоступна"
+              message={error}
+              action={
+                <button
+                  type="button"
+                  onClick={() => void loadNews()}
+                  className="inline-flex items-center gap-2 bg-natural-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  Повторить загрузку
+                </button>
+              }
+            />
+          ) : articles.length === 0 ? (
+            <EmptyState
+              icon={<Inbox size={24} aria-hidden="true" />}
+              title="В ленте пока нет новостей"
+              message="Обновите источник, чтобы получить свежие материалы."
+              action={
+                <button
+                  type="button"
+                  onClick={() => void loadNews()}
+                  className="inline-flex items-center gap-2 border border-natural-border bg-white px-4 py-2.5 text-sm font-semibold text-natural-ink hover:border-natural-accent dark:bg-natural-sidebar"
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  Обновить
+                </button>
+              }
+            />
+          ) : (
+            <>
+              <div className="mb-5 mt-7 flex items-center justify-between gap-4">
+                <p className="text-sm text-natural-ink-muted">
+                  {total} {pluralize(total, 'материал', 'материала', 'материалов')}
+                </p>
+                <span className="text-xs text-natural-ink-muted">
+                  Показано {articles.length}
+                </span>
+              </div>
+
+              <div className="news-grid">
+                {articles.map((article) => (
+                  <NewsCard key={article.id} article={article} onOpen={handleOpenArticle} />
+                ))}
+              </div>
+
+              {hasMore && (
+                <div className="flex justify-center pt-8">
+                  <button
+                    type="button"
+                    onClick={() => void loadNews(true)}
+                    disabled={isLoadingMore}
+                    className="inline-flex min-h-10 items-center gap-2 border border-natural-border bg-white px-5 py-2.5 text-sm font-semibold text-natural-ink transition-colors hover:border-natural-accent disabled:cursor-wait disabled:opacity-60 dark:bg-natural-sidebar"
+                  >
+                    {isLoadingMore && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
+                    {isLoadingMore ? 'Загружаем' : 'Показать еще'}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </main>
+
+      <NewsDetail
+        article={selectedArticle}
+        tone={tone}
+        customStyle={customStyle}
+        rewrite={rewrite}
+        isLoading={isDetailLoading}
+        isRewriting={isRewriting}
+        error={detailError || rewriteError}
+        onClose={handleCloseArticle}
+        onToneChange={handleToneChange}
+        onCustomStyleChange={setCustomStyle}
+        onRewrite={() => void handleRewrite()}
+        onRetry={() => {
+          if (detailError && selectedArticle) {
+            handleOpenArticle(selectedArticle);
+          } else {
+            void handleRewrite();
+          }
+        }}
+      />
     </div>
   );
 }
 
+function EmptyState({
+  icon,
+  title,
+  message,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  message: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <section className="flex min-h-[22rem] flex-col items-center justify-center border border-dashed border-natural-border px-5 text-center">
+      <div className="flex h-12 w-12 items-center justify-center border border-natural-border text-natural-accent">
+        {icon}
+      </div>
+      <h3 className="mt-5 font-serif text-xl font-bold text-natural-ink">{title}</h3>
+      <p className="mt-2 max-w-md text-sm leading-6 text-natural-ink-muted">{message}</p>
+      <div className="mt-5">{action}</div>
+    </section>
+  );
+}
+
+function pluralize(
+  value: number,
+  one: string,
+  few: string,
+  many: string,
+): string {
+  const remainder = value % 100;
+  if (remainder >= 11 && remainder <= 14) return many;
+  switch (value % 10) {
+    case 1:
+      return one;
+    case 2:
+    case 3:
+    case 4:
+      return few;
+    default:
+      return many;
+  }
+}

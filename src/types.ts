@@ -1,34 +1,66 @@
-export type Goal = 'sell' | 'explain' | 'persuade' | 'simplify' | 'entertain';
-export type Audience = 'beginner' | 'expert' | 'client' | 'child' | 'general';
-export type Tonality = 'business' | 'friendly' | 'inspiring' | 'aggressive' | 'ironic';
-export type Formality = 'low' | 'medium' | 'high';
-export type Length = 'short' | 'medium' | 'detailed';
+export type Tone = 'neutral' | 'joyful' | 'sad' | 'ironic' | 'custom';
 
-export interface TransformationParams {
-  goal: Goal;
-  audience: Audience;
-  tonality: Tonality;
-  formality: Formality;
-  length: Length;
-  simplifyTerms: boolean;
-}
-
-export interface TransformationResult {
-  adapted: string;
-  neutral: string;
-  changes: string;
-}
-
-export interface RequestRecord {
+export interface NewsArticle {
   id: string;
+  source: 'habr-ai';
+  sourceName: 'Хабр';
+  sourceGuid: string;
+  sourceUrl: string;
   title: string;
-  sourceText: string;
-  params: TransformationParams;
-  result: TransformationResult | null;
-  createdAt: number;
+  summary: string;
+  author: string | null;
+  publishedAt: string;
+  categories: string[];
+  externalLinks: string[];
+  sourceHash: string;
+  fetchedAt: string;
+  updatedAt: string;
 }
 
-export interface AppSettings {
-  theme: 'light' | 'dark';
-  apiKey: string;
+export interface NewsSource {
+  id: 'habr-ai';
+  name: 'Хабр';
+  feedUrl: string;
+  newsUrl: string;
+}
+
+export interface NewsListResponse {
+  items: NewsArticle[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
+  };
+  source: NewsSource;
+}
+
+export interface NewsDetailResponse {
+  item: NewsArticle;
+  source: NewsSource;
+}
+
+export interface RewriteResult {
+  articleId: string;
+  tone: Tone;
+  customStyle: string | null;
+  rewrittenTitle: string;
+  rewrittenSummary: string;
+  model: string;
+  promptVersion: string;
+  sourceHash: string;
+  validationStatus: 'passed';
+  validation: {
+    deterministic: {
+      passed: boolean;
+      missing: Record<string, string[]>;
+      added: Record<string, string[]>;
+    };
+    semantic: {
+      passed: boolean;
+      issues: string[];
+    };
+    repairAttempted: boolean;
+  };
+  cached: boolean;
 }

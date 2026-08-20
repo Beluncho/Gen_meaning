@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --natural-bg: #F8F7F4;
-  --natural-sidebar: #EEEBE6;
-  --natural-accent: #5A634B;
-  --natural-accent-light: #8E9680;
-  --natural-ink: #2C2C2B;
-  --natural-ink-muted: #706D67;
-  --natural-border: #DCD9D1;
+  --natural-bg: #f4f7f7;
+  --natural-sidebar: #e8eff0;
+  --natural-accent: #126b73;
+  --natural-accent-light: #63a9a7;
+  --natural-ink: #1d2b2f;
+  --natural-ink-muted: #64757b;
+  --natural-border: #d4e0e2;
 }
 
 .dark {
-  --natural-bg: #141413;
-  --natural-sidebar: #1C1C1B;
-  --natural-accent: #8E9680;
-  --natural-accent-light: #5A634B;
-  --natural-ink: #EEEBE6;
-  --natural-ink-muted: #94918B;
-  --natural-border: #2C2C2B;
+  --natural-bg: #101719;
+  --natural-sidebar: #172326;
+  --natural-accent: #75c2bd;
+  --natural-accent-light: #367f80;
+  --natural-ink: #edf4f3;
+  --natural-ink-muted: #9aacab;
+  --natural-border: #2d4144;
 }
 
 @theme {
@@ -28,28 +28,102 @@
   --color-natural-ink: var(--natural-ink);
   --color-natural-ink-muted: var(--natural-ink-muted);
   --color-natural-border: var(--natural-border);
-  
+
   --font-serif: "Georgia", serif;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
-    @apply bg-natural-bg text-natural-ink font-sans antialiased transition-colors duration-200;
+    @apply bg-natural-bg text-natural-ink font-sans antialiased;
+  }
+
+  button,
+  a,
+  input {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible {
+    @apply outline-2 outline-offset-2 outline-natural-accent;
   }
 
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
+
   .custom-scrollbar::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    background: transparent;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-natural-border rounded-full hover:bg-natural-ink-muted/30 transition-colors;
+    @apply rounded-full bg-natural-border;
   }
 }
 
-html, body, #root {
-  height: 100%;
+@layer components {
+  .icon-button {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-natural-ink-muted transition-colors hover:border-natural-border hover:bg-natural-sidebar hover:text-natural-ink disabled:cursor-wait disabled:opacity-60;
+  }
+
+  .icon-button-small {
+    @apply h-8 w-8;
+  }
+
+  .eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-[0.16em] text-natural-accent;
+  }
+
+  .source-mark {
+    @apply inline-flex items-center border border-natural-accent/25 bg-natural-accent/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-natural-accent;
+  }
+
+  .news-grid {
+    @apply grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .news-card {
+    @apply flex min-h-[18rem] flex-col border border-natural-border bg-white p-5 transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-natural-accent/50 hover:shadow-lg dark:bg-natural-sidebar/45;
+  }
+
+  .tone-control {
+    @apply grid grid-cols-2 gap-1 border border-natural-border bg-white p-1 sm:flex dark:bg-natural-sidebar;
+  }
+
+  .tone-control-compact {
+    @apply w-full sm:w-auto;
+  }
+
+  .tone-option {
+    @apply inline-flex min-h-9 items-center justify-center gap-1.5 whitespace-nowrap px-2.5 py-1.5 text-xs font-semibold text-natural-ink-muted transition-colors hover:bg-natural-sidebar hover:text-natural-ink disabled:cursor-wait disabled:opacity-50 sm:flex-1;
+  }
+
+  .tone-option-active {
+    @apply bg-natural-accent text-white shadow-sm hover:bg-natural-accent hover:text-white;
+  }
+
+  .comparison-panel {
+    @apply border border-natural-border bg-white p-5 dark:bg-natural-sidebar/45 sm:p-6;
+  }
+
+  .comparison-panel-accent {
+    @apply border-natural-accent/40;
+  }
+
+  .comparison-heading {
+    @apply flex items-start justify-between gap-3 border-b border-natural-border pb-4;
+  }
+
+  .comparison-heading h3 {
+    @apply mt-1 text-sm font-bold text-natural-ink;
+  }
 }

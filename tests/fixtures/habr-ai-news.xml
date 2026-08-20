@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title><![CDATA[Все новости подряд / Искусственный интеллект / Хабр]]></title>
+    <link>https://habr.com/ru/hubs/artificial_intelligence/news/</link>
+    <description><![CDATA[AI news fixture]]></description>
+    <language>ru</language>
+    <item>
+      <title><![CDATA[OpenAI представила новый режим для обучения]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/news/1000001/</guid>
+      <link>https://habr.com/ru/news/1000001/?utm_source=rss</link>
+      <description><![CDATA[
+        <img src="https://habrastorage.org/example.png" />
+        <p>Компания представила режим 18 августа 2026 года. Подробнее опубликовано
+        <a href="https://example.com/source">в источнике</a>.</p>
+        <a href="https://habr.com/ru/articles/1000001/#habracut">Читать далее</a>
+      ]]></description>
+      <pubDate>Tue, 18 Aug 2026 10:00:00 GMT</pubDate>
+      <dc:creator><![CDATA[editor]]></dc:creator>
+      <category><![CDATA[искусственный интеллект]]></category>
+      <category><![CDATA[новости]]></category>
+    </item>
+    <item>
+      <title><![CDATA[Исследование показало рост продуктивности на 12%]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/news/1000002/</guid>
+      <link>https://habr.com/ru/news/1000002/?utm_campaign=1000002</link>
+      <description><![CDATA[
+        <p>Исследователи изучили результаты за 6 месяцев и сообщили о росте
+        продуктивности на 12%.</p>
+      ]]></description>
+      <pubDate>Mon, 17 Aug 2026 09:30:00 GMT</pubDate>
+      <dc:creator><![CDATA[researcher]]></dc:creator>
+      <category><![CDATA[исследования]]></category>
+    </item>
+  </channel>
+</rss>
